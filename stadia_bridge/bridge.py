@@ -6,6 +6,15 @@ from .mapping import Report, read_report, send_report
 RUMBLE_MS = 300      # Each effect expires on its own, so rumble cannot stick on.
 RUMBLE_REFRESH = 0.1  # Re-send an unchanged effect this often to keep it running.
 
+# SDL stores the input backend in byte 14 of the joystick GUID.
+BACKENDS = {"68": "HIDAPI", "72": "RawInput", "77": "Windows.Gaming.Input", "78": "XInput", "76": "Virtual"}
+
+
+def backend_name(guid: str) -> str:
+    if not isinstance(guid, str) or len(guid) != 32:
+        return "Unknown"
+    return BACKENDS.get(guid[28:30].lower(), "DirectInput")
+
 
 class Bridge:
     def __init__(self, source, output_factory):
@@ -20,6 +29,8 @@ class Bridge:
         self.sent_rumble = (0, 0)
         self.next_rumble = 0.0
         self.test_rumble_until = 0.0
+        self.backend = ""
+        self.rumble_result = None  # Last value returned by SDL rumble: None until tried.
         self.next_scan = 0.0
         self.status = "Stopped"
         self.report = Report()
@@ -46,7 +57,10 @@ class Bridge:
             return
         if large or small:
             # Large (left) motor is low frequency; small (right) motor is high frequency.
-            self.controller.rumble(large / 255, small / 255, RUMBLE_MS)
+            result = bool(self.controller.rumble(large / 255, small / 255, RUMBLE_MS))
+            if result != self.rumble_result:
+                logging.info("SDL rumble %s via %s", "accepted" if result else "rejected", self.backend)
+            self.rumble_result = result
         else:
             self.controller.stop_rumble()
         self.sent_rumble = (large, small)
@@ -101,6 +115,10 @@ class Bridge:
                         self.controller = self.source.open(index)
                         self.pad = self.output_factory()
                         self.pad.register_notification(callback_function=self._on_rumble)
+                        guid = self.source.guid(self.controller)
+                        self.backend = backend_name(guid)
+                        self.rumble_result = None
+                        logging.info("Opened %s, GUID %s (%s)", name, guid, self.backend)
                         self.status = f"Connected: {name} → Xbox 360"
                         break
             if self.controller is not None:
@@ -141,6 +159,13 @@ class SDLSource:
         if not self.api.is_controller(index):
             raise RuntimeError("SDL does not recognize this Stadia controller mapping")
         return self.api.Controller(index)
+
+    def guid(self, controller):
+        try:
+            return controller.as_joystick().get_guid()
+        except Exception:
+            logging.exception("Could not read controller GUID")
+            return ""
 
     def close(self):
         self.api.quit()

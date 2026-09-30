@@ -109,7 +109,9 @@ def main():
         now = time.monotonic()
         if now - last_ui >= 0.05:
             status.set(bridge.status)
-            devices.set(f"Detected: {bridge.devices}")
+            rumble = {None: "not tried", True: "accepted by SDL", False: "rejected by SDL"}[bridge.rumble_result]
+            path = f"\nInput path: {bridge.backend}    Vibration: {rumble}" if bridge.controller is not None else ""
+            devices.set(f"Detected: {bridge.devices}{path}")
             r = bridge.report
             pressed = " ".join(name for name, flag in BUTTONS if r.buttons & flag) or "—"
             live.set(f"Left  {r.lx:6d}, {r.ly:6d}    LT {r.lt:3d}/255\nRight {r.rx:6d}, {r.ry:6d}    RT {r.rt:3d}/255\nButtons: {pressed}")

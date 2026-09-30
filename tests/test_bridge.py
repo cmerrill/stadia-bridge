@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import Mock, patch, call
-from stadia_bridge.bridge import Bridge, xbox_factory
+from stadia_bridge.bridge import Bridge, backend_name, xbox_factory
 from stadia_bridge.mapping import BUTTONS, Report, read_report, send_report, stick
 
 
@@ -144,6 +144,7 @@ class RumbleTests(unittest.TestCase):
     def setUp(self):
         self.source = Mock()
         self.source.names.return_value = [(1, 'Stadia Controller')]
+        self.source.guid.return_value = '05000000d11800000094000000006800'
         self.c = controller()
         self.source.open.return_value = self.c
         self.pad = Mock()
@@ -170,6 +171,19 @@ class RumbleTests(unittest.TestCase):
         self.bridge.tick()
         self.bridge.tick()
         self.c.stop_rumble.assert_called_once()
+
+    def test_backend_and_rumble_result_are_reported(self):
+        self.assertEqual(self.bridge.backend, 'HIDAPI')
+        self.assertIsNone(self.bridge.rumble_result)
+        self.c.rumble.return_value = False
+        self.bridge.test_rumble()
+        self.bridge.tick()
+        self.assertIs(self.bridge.rumble_result, False)
+
+    def test_backend_names(self):
+        self.assertEqual(backend_name('03000000d11800000094000000007700'), 'Windows.Gaming.Input')
+        self.assertEqual(backend_name('03000000d11800000094000000000000'), 'DirectInput')
+        self.assertEqual(backend_name(''), 'Unknown')
 
     def test_test_button_pulses_then_stops(self):
         self.bridge.test_rumble()
