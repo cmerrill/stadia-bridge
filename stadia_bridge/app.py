@@ -18,8 +18,8 @@ DRIVER_URL = "https://github.com/nefarius/ViGEmBus/releases/latest"
 def main():
     root = tk.Tk()
     root.title("Stadia Bridge")
-    root.geometry("650x550")
-    root.minsize(590, 510)
+    root.geometry("650x610")
+    root.minsize(590, 570)
     if sys.platform != "win32":
         messagebox.showerror("Windows required", "Stadia Bridge creates a virtual Xbox controller on Windows 10/11.")
         root.destroy()
@@ -68,6 +68,7 @@ def main():
             logging.exception("Stop failed")
             messagebox.showerror("Controller cleanup", str(exc))
     ttk.Button(actions, text="Stop", command=stop).pack(side="left")
+    ttk.Button(actions, text="Test vibration", command=bridge.test_rumble).pack(side="left", padx=(8, 0))
     ttk.Button(actions, text="Test in Windows", command=lambda: subprocess.Popen(["control.exe", "joy.cpl"])).pack(side="right")
     zone_label = tk.StringVar(value="Stick deadzone: 8%")
     ttk.Label(panel, textvariable=zone_label).pack(anchor="w")
@@ -77,6 +78,14 @@ def main():
     scale = ttk.Scale(panel, from_=0, to=30, command=deadzone)
     scale.set(8)
     scale.pack(fill="x", pady=(4, 16))
+    threshold_label = tk.StringVar(value="Trigger threshold: 0% (off)")
+    ttk.Label(panel, textvariable=threshold_label).pack(anchor="w")
+    def trigger_threshold(value):
+        bridge.trigger_threshold = float(value) / 100
+        threshold_label.set(f"Trigger threshold: {float(value):.0f}%" + (" (off)" if float(value) < 0.5 else ""))
+    threshold = ttk.Scale(panel, from_=0, to=60, command=trigger_threshold)
+    threshold.set(0)
+    threshold.pack(fill="x", pady=(4, 16))
     live = tk.StringVar(value="No input")
     ttk.Label(panel, text="LIVE XBOX OUTPUT").pack(anchor="w")
     ttk.Label(panel, textvariable=live, font=("Consolas", 10), wraplength=575).pack(anchor="w", pady=8)

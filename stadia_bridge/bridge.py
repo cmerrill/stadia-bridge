@@ -3,6 +3,9 @@ import logging
 import time
 from .mapping import Report, read_report, send_report
 
+RUMBLE_MS = 300      # Each effect expires on its own, so rumble cannot stick on.
+RUMBLE_REFRESH = 0.1  # Re-send an unchanged effect this often to keep it running.
+
 
 class Bridge:
     def __init__(self, source, output_factory):
@@ -12,6 +15,11 @@ class Bridge:
         self.pad = None
         self.enabled = False
         self.deadzone = 0.08
+        self.trigger_threshold = 0.0
+        self.rumble = (0, 0)  # (large, small) motors, 0-255, written by the driver thread.
+        self.sent_rumble = (0, 0)
+        self.next_rumble = 0.0
+        self.test_rumble_until = 0.0
         self.next_scan = 0.0
         self.status = "Stopped"
         self.report = Report()
@@ -24,17 +32,45 @@ class Bridge:
         self.next_scan = 0.0
         self.status = "Waiting for a Stadia controller…"
 
+    def _on_rumble(self, client, target, large_motor, small_motor, led_number, user_data):
+        # Runs on a ViGEm driver thread: only record it; SDL is driven from tick().
+        self.rumble = (large_motor, small_motor)
+
+    def test_rumble(self, seconds=0.5):
+        self.test_rumble_until = time.monotonic() + seconds
+
+    def _apply_rumble(self):
+        now = time.monotonic()
+        large, small = (255, 255) if now < self.test_rumble_until else self.rumble
+        if (large, small) == self.sent_rumble and (not (large or small) or now < self.next_rumble):
+            return
+        if large or small:
+            # Large (left) motor is low frequency; small (right) motor is high frequency.
+            self.controller.rumble(large / 255, small / 255, RUMBLE_MS)
+        else:
+            self.controller.stop_rumble()
+        self.sent_rumble = (large, small)
+        self.next_rumble = now + RUMBLE_REFRESH
+
     def release(self):
         pad, controller = self.pad, self.controller
         self.pad = self.controller = None
         self.report = Report()
+        self.rumble = self.sent_rumble = (0, 0)
+        self.test_rumble_until = 0.0
         try:
             if pad is not None:
-                send_report(pad, self.report)
+                try:
+                    pad.unregister_notification()
+                finally:
+                    send_report(pad, self.report)
         finally:
             # vgamepad removes the virtual device when its last reference is released.
             if controller is not None:
-                controller.quit()
+                try:
+                    controller.stop_rumble()
+                finally:
+                    controller.quit()
 
     def stop(self):
         self.enabled = False
@@ -64,11 +100,13 @@ class Bridge:
                     if "stadia" in name.casefold():
                         self.controller = self.source.open(index)
                         self.pad = self.output_factory()
+                        self.pad.register_notification(callback_function=self._on_rumble)
                         self.status = f"Connected: {name} → Xbox 360"
                         break
             if self.controller is not None:
-                self.report = read_report(self.controller, self.deadzone)
+                self.report = read_report(self.controller, self.deadzone, self.trigger_threshold)
                 send_report(self.pad, self.report)
+                self._apply_rumble()
         except Exception as exc:
             logging.exception("Controller bridge failed")
             try:

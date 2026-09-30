@@ -37,13 +37,19 @@ class Report:
     rt: int = 0
 
 
-def read_report(controller, deadzone: float = 0.08) -> Report:
+def read_report(controller, deadzone: float = 0.08, trigger_threshold: float = 0.0) -> Report:
+    if not 0 <= trigger_threshold < 1:
+        raise ValueError("Trigger threshold must be between 0 and 1 (exclusive).")
     axes = [controller.get_axis(i) for i in range(6)]
     lx, ly = stick(axes[0], axes[1], deadzone)
     rx, ry = stick(axes[2], axes[3], deadzone)
     mask = sum(flag for i, (_, flag) in enumerate(BUTTONS) if controller.get_button(i))
     def trigger(value):
-        return round(max(0, min(32767, value)) * 255 / 32767)
+        # Below the threshold reads as released; the rest is rescaled so a full pull is still 255.
+        unit = max(0, min(32767, value)) / 32767
+        if unit <= trigger_threshold:
+            return 0
+        return round((unit - trigger_threshold) / (1 - trigger_threshold) * 255)
     return Report(mask, lx, ly, rx, ry, trigger(axes[4]), trigger(axes[5]))
 
 

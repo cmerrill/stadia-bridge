@@ -31,6 +31,14 @@ class MappingTests(unittest.TestCase):
         self.assertEqual((r.lt, r.rt), (128, 255))
         self.assertEqual(read_report(controller((0, 0, 0, 0, -1, 0))).lt, 0)
 
+    def test_trigger_threshold(self):
+        light = controller((0, 0, 0, 0, 6553, 32767))
+        self.assertEqual((read_report(light, trigger_threshold=.25).lt, read_report(light, trigger_threshold=.25).rt), (0, 255))
+        self.assertEqual(read_report(controller((0, 0, 0, 0, 16384, 0)), trigger_threshold=.25).lt, 85)
+        self.assertEqual(read_report(light).lt, 51)  # Default threshold is off.
+        with self.assertRaises(ValueError):
+            read_report(controller(), trigger_threshold=1)
+
     def test_each_button_and_simultaneous_inputs(self):
         expected = [4096, 8192, 16384, 32768, 32, 1024, 16, 64, 128, 256, 512, 1, 2, 4, 8]
         for i, flag in enumerate(expected):
@@ -130,6 +138,55 @@ class LifecycleTests(unittest.TestCase):
         self.assertIsNone(self.bridge.pad)
         self.pad.left_joystick.assert_called_with(x_value=0, y_value=0)
         self.assertFalse(self.bridge.enabled)
+
+
+class RumbleTests(unittest.TestCase):
+    def setUp(self):
+        self.source = Mock()
+        self.source.names.return_value = [(1, 'Stadia Controller')]
+        self.c = controller()
+        self.source.open.return_value = self.c
+        self.pad = Mock()
+        self.bridge = Bridge(self.source, Mock(return_value=self.pad))
+        self.bridge.start()
+        self.bridge.tick()
+
+    def game_rumbles(self, large, small):
+        callback = self.pad.register_notification.call_args.kwargs['callback_function']
+        callback(None, None, large, small, 0, None)
+
+    def test_game_rumble_is_forwarded_and_stopped(self):
+        self.c.rumble.assert_not_called()
+        self.c.stop_rumble.assert_not_called()
+        self.game_rumbles(255, 51)
+        self.bridge.tick()
+        self.c.rumble.assert_called_once_with(1.0, 0.2, 300)
+        self.bridge.tick()  # Unchanged and not yet due for a refresh.
+        self.c.rumble.assert_called_once()
+        self.bridge.next_rumble = 0
+        self.bridge.tick()
+        self.assertEqual(self.c.rumble.call_count, 2)
+        self.game_rumbles(0, 0)
+        self.bridge.tick()
+        self.bridge.tick()
+        self.c.stop_rumble.assert_called_once()
+
+    def test_test_button_pulses_then_stops(self):
+        self.bridge.test_rumble()
+        self.bridge.tick()
+        self.c.rumble.assert_called_once_with(1.0, 1.0, 300)
+        self.bridge.test_rumble_until = 0
+        self.bridge.tick()
+        self.c.stop_rumble.assert_called_once()
+
+    def test_release_stops_rumble_and_unregisters(self):
+        self.game_rumbles(200, 200)
+        self.bridge.tick()
+        self.bridge.stop()
+        self.pad.unregister_notification.assert_called_once()
+        self.c.stop_rumble.assert_called_once()
+        self.c.quit.assert_called_once()
+        self.assertEqual(self.bridge.rumble, (0, 0))
 
 
 if __name__ == '__main__':
