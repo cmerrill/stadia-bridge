@@ -9,6 +9,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import webbrowser
 from .bridge import Bridge, SDLSource, xbox_factory
+from .hidrumble import HidRumble
 from .mapping import BUTTONS
 from .instance import SingleInstance
 
@@ -43,7 +44,7 @@ def main():
         instance.close()
         root.destroy()
         return
-    bridge = Bridge(source, xbox_factory)
+    bridge = Bridge(source, xbox_factory, HidRumble)
     style = ttk.Style(root)
     style.theme_use("clam")
     style.configure("TFrame", background="#151b29")
@@ -110,6 +111,8 @@ def main():
         if now - last_ui >= 0.05:
             status.set(bridge.status)
             rumble = {None: "not tried", True: "accepted by SDL", False: "rejected by SDL"}[bridge.rumble_result]
+            if bridge.hid_rumble is not None:
+                rumble = f"SDL rejected; {bridge.hid_rumble.status}"
             path = f"\nInput path: {bridge.backend}    Vibration: {rumble}" if bridge.controller is not None else ""
             devices.set(f"Detected: {bridge.devices}{path}")
             r = bridge.report

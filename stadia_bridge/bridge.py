@@ -17,9 +17,11 @@ def backend_name(guid: str) -> str:
 
 
 class Bridge:
-    def __init__(self, source, output_factory):
+    def __init__(self, source, output_factory, hid_rumble_factory=None):
         self.source = source
         self.output_factory = output_factory
+        self.hid_rumble_factory = hid_rumble_factory  # Fallback when SDL rejects rumble.
+        self.hid_rumble = None
         self.controller = None
         self.pad = None
         self.enabled = False
@@ -53,6 +55,9 @@ class Bridge:
     def _apply_rumble(self):
         now = time.monotonic()
         large, small = (255, 255) if now < self.test_rumble_until else self.rumble
+        if self.hid_rumble is not None:
+            self.hid_rumble.set(large, small)  # Its worker thread handles timing and the watchdog.
+            return
         if (large, small) == self.sent_rumble and (not (large or small) or now < self.next_rumble):
             return
         if large or small:
@@ -61,14 +66,18 @@ class Bridge:
             if result != self.rumble_result:
                 logging.info("SDL rumble %s via %s", "accepted" if result else "rejected", self.backend)
             self.rumble_result = result
+            if not result and self.hid_rumble_factory is not None:
+                logging.info("Trying direct HID rumble")
+                self.hid_rumble = self.hid_rumble_factory()
+                self.hid_rumble.set(large, small)
         else:
             self.controller.stop_rumble()
         self.sent_rumble = (large, small)
         self.next_rumble = now + RUMBLE_REFRESH
 
     def release(self):
-        pad, controller = self.pad, self.controller
-        self.pad = self.controller = None
+        pad, controller, hid_rumble = self.pad, self.controller, self.hid_rumble
+        self.pad = self.controller = self.hid_rumble = None
         self.report = Report()
         self.rumble = self.sent_rumble = (0, 0)
         self.test_rumble_until = 0.0
@@ -80,11 +89,15 @@ class Bridge:
                     send_report(pad, self.report)
         finally:
             # vgamepad removes the virtual device when its last reference is released.
-            if controller is not None:
-                try:
-                    controller.stop_rumble()
-                finally:
-                    controller.quit()
+            try:
+                if hid_rumble is not None:
+                    hid_rumble.close()
+            finally:
+                if controller is not None:
+                    try:
+                        controller.stop_rumble()
+                    finally:
+                        controller.quit()
 
     def stop(self):
         self.enabled = False
