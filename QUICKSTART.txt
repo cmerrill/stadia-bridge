@@ -19,6 +19,8 @@ Windows sees an Xbox 360 controller through native XInput. Click Test in Windows
 in the app to check it. Use Stop or close the app to remove the Xbox device.
 
 The executable is unsigned. ViGEmBus is a retired dependency.
-Rumble, headset audio, Assistant and Capture are not forwarded.
+Rumble is forwarded where SDL supports it; press Test vibration to check.
+Headset audio, Assistant and Capture are not forwarded.
+If triggers register from light bumps, raise the Trigger threshold slider.
 For duplicate input and troubleshooting, see README.md.
 Dependency notices are accessible through the app's Licenses button.
