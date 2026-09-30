@@ -1,7 +1,6 @@
 import unittest
 from unittest.mock import Mock, patch, call
 from stadia_bridge.bridge import Bridge, backend_name, xbox_factory
-from stadia_bridge.hidrumble import choose_report_id, rumble_report
 from stadia_bridge.mapping import BUTTONS, Report, read_report, send_report, stick
 
 
@@ -149,9 +148,7 @@ class RumbleTests(unittest.TestCase):
         self.c = controller()
         self.source.open.return_value = self.c
         self.pad = Mock()
-        self.hid = Mock()
-        self.hid_factory = Mock(return_value=self.hid)
-        self.bridge = Bridge(self.source, Mock(return_value=self.pad), self.hid_factory)
+        self.bridge = Bridge(self.source, Mock(return_value=self.pad))
         self.bridge.start()
         self.bridge.tick()
 
@@ -182,33 +179,6 @@ class RumbleTests(unittest.TestCase):
         self.bridge.test_rumble()
         self.bridge.tick()
         self.assertIs(self.bridge.rumble_result, False)
-
-    def test_rejected_sdl_rumble_falls_back_to_hid(self):
-        self.c.rumble.return_value = False
-        self.bridge.test_rumble()
-        self.bridge.tick()
-        self.hid_factory.assert_called_once()
-        self.hid.set.assert_called_with(255, 255)
-        self.bridge.test_rumble_until = 0
-        self.bridge.tick()
-        self.hid.set.assert_called_with(0, 0)  # Sent every tick; SDL is not retried.
-        self.c.rumble.assert_called_once()
-        self.bridge.stop()
-        self.hid.close.assert_called_once()
-        self.assertIsNone(self.bridge.hid_rumble)
-
-    def test_accepted_sdl_rumble_does_not_use_hid(self):
-        self.c.rumble.return_value = True
-        self.bridge.test_rumble()
-        self.bridge.tick()
-        self.hid_factory.assert_not_called()
-
-    def test_hid_rumble_report(self):
-        self.assertEqual(rumble_report(5, 5, 255, 1), bytes([5, 255, 255, 1, 1]))
-        self.assertEqual(rumble_report(5, 8, 0, 0), bytes([5, 0, 0, 0, 0, 0, 0, 0]))
-        self.assertEqual(choose_report_id({3, 5}), 5)
-        self.assertEqual(choose_report_id({7}), 7)
-        self.assertEqual(choose_report_id(set()), 5)
 
     def test_backend_names(self):
         self.assertEqual(backend_name('03000000d11800000094000000007700'), 'Windows.Gaming.Input')

@@ -69,7 +69,7 @@ Stadia controller → Stadia Bridge → ViGEmBus → Xbox 360 / XInput → Your 
 | Number of controllers | One primary Stadia controller; a Tandem pair shares the same Xbox output |
 | Tandem Mode | Confirmed working in-game by a user with a PlayStation secondary controller |
 | Xbox identity | Xbox 360, not Xbox One; ViGEmBus does not emulate an Xbox One device |
-| Vibration | Forwarded to the controller when SDL supports rumble for it; use **Test vibration** to check |
+| Vibration | Forwarded over USB. Not over Bluetooth on Windows ([details](docs/BLUETOOTH_RUMBLE.md)); use **Test vibration** to check |
 | Headset audio | Not forwarded |
 | Assistant / Capture buttons | Not forwarded |
 | Stadia / menu buttons | Guide and Start/Back where SDL and firmware support them; games or overlays may intercept Guide |
